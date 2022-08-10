@@ -575,14 +575,13 @@ function! <SID>DoxygenCommentFunc()
         let l:endDocPattern    = ';\|{\|\%([^:]\zs:\ze\%([^:]\|$\)\)'
         let l:commentPattern   = '\%(/*\)\|\%(//\)\'
         let l:templateParameterPattern = "<[^<>]*>"
-        let l:throwPattern = '.*\<throw\>[[:blank:]]*(\([^()]*\)).*' "available only for 'cpp' type
 
         let l:classPattern     = '\<class\>[[:blank:]]\+\zs'.l:someNameWithNamespacePattern.'\ze.*\%('.l:endDocPattern.'\)'
-        let l:structPattern    = '\<struct\>[[:blank:]]\+\zs'.l:someNameWithNamespacePattern.'\ze[^(),]*\%('.l:endDocPattern.'\)'
-        let l:enumPattern      = '\<enum\>\%(\%([[:blank:]]\+\zs'.l:someNamePattern.'\ze[[:blank:]]*\)\|\%(\zs\ze[[:blank:]]*\)\)\%('.l:endDocPattern.'\)'
-        let l:namespacePattern = '\<namespace\>[[:blank:]]\+\zs'.l:someNamePattern.'\ze[[:blank:]]*\%('.l:endDocPattern.'\)'
+        let l:structPattern    = '\<type\>[[:blank:]]\+\zs'.l:someNameWithNamespacePattern.'\ze[^(),]*struct\%('.l:endDocPattern.'\)'
+        let l:namespacePattern = '\<package\>[[:blank:]]\+\zs'.l:someNamePattern.'\ze[[:blank:]]*\%('.l:endDocPattern.'\)'
+        let l:functionPattern  = '\<func\>[[:blank:]]\+\zs'.l:someNameWithNamespacePattern.'\ze.*\%('.l:endDocPattern.'\)'
 
-        let l:types = { "class": l:classPattern, "struct": l:structPattern, "enum": l:enumPattern, "namespace": l:namespacePattern }
+        let l:types = { "class": l:classPattern, "struct": l:structPattern, "package": l:namespacePattern, "function": l:functionPattern }
     else
         let l:commentPattern   = '#\|^[[:blank:]]*"""'
 
@@ -636,15 +635,6 @@ function! <SID>DoxygenCommentFunc()
         if( match( l:lineBuffer, l:endReadPattern ) != -1 )
             " Look for throw statement at the end
             if( s:CheckFileType() == "cpp" && l:throwCompleted == 0 )
-                " throw statement can have already been read or can be on next line
-                if( match( l:lineBuffer.' '.getline( line ( "." ) + 1 ), '.*\<throw\>.*' ) != -1 )
-                    let l:endReadPattern = l:throwPattern
-                    let l:throwCompleted = 1
-                    let l:readError = "Cannot reach end of throw statement"
-                else
-                    let l:endDocFound = 1
-                endif
-            elseif ( s:CheckFileType() == "go" && l:throwCompleted == 0 )
                 " throw statement can have already been read or can be on next line
                 if( match( l:lineBuffer.' '.getline( line ( "." ) + 1 ), '.*\<throw\>.*' ) != -1 )
                     let l:endReadPattern = l:throwPattern
@@ -746,9 +736,6 @@ function! <SID>DoxygenCommentFunc()
             else
                 let l:doc.type = 'function'
                 call s:ParseFunctionParameters( l:lineBuffer, l:doc )
-                if( l:throwCompleted == 1 )
-                    call s:ParseThrowParameters( l:lineBuffer, l:doc, l:throwPattern )
-                endif
             endif
         else
             let l:doc.type = 'attribute'
