@@ -573,13 +573,13 @@ function! <SID>DoxygenCommentFunc()
     elseif ( s:CheckFileType() == "go" )
         let l:someNameWithNamespacePattern  = l:someNamePattern.'\%(::'.l:someNamePattern.'\)*'
         let l:endDocPattern    = ';\|{\|\%([^:]\zs:\ze\%([^:]\|$\)\)'
-        let l:commentPattern   = '\%(/*\)\|\%(//\)\'
+        let l:commentPattern   = '\%(^[[:blank:]]*\*\)\|\%(^\/\/\)\|\%(\/\*\*\)'
         let l:templateParameterPattern = "<[^<>]*>"
 
         let l:classPattern     = '\<class\>[[:blank:]]\+\zs'.l:someNameWithNamespacePattern.'\ze.*\%('.l:endDocPattern.'\)'
         let l:structPattern    = '\<type\>[[:blank:]]\+\zs'.l:someNameWithNamespacePattern.'\ze[^(),]*struct\%('.l:endDocPattern.'\)'
         let l:namespacePattern = '\<package\>[[:blank:]]\+\zs'.l:someNamePattern.'\ze[[:blank:]]*\%('.l:endDocPattern.'\)'
-        let l:functionPattern  = '\<func\>[[:blank:]]\+\zs'.l:someNameWithNamespacePattern.'\ze.*\%('.l:endDocPattern.'\)'
+        let l:functionPattern  = '\<func\>[[:blank:]]\+(\([^()]*\)).\zs'.l:someNamePattern.'\ze.*\%('.l:endDocPattern.'\)'
 
         let l:types = { "class": l:classPattern, "struct": l:structPattern, "package": l:namespacePattern, "function": l:functionPattern }
     else
@@ -614,6 +614,10 @@ function! <SID>DoxygenCommentFunc()
         call s:WarnMsg( "Nothing to document here!" )
         exec "normal `d" 
         return
+    endif
+
+    if (s:CheckFileType() == "go")
+        let l:lineBuffer = substitute(l:lineBuffer, '\<func\>[[:blank:]]\+(\([^()]*\)).', 'func ', "g")
     endif
 
     " Remove unwanted lines (ie: jump to the first significant line)
@@ -671,10 +675,6 @@ function! <SID>DoxygenCommentFunc()
     call s:ParseFunctionTemplateParameters( l:lineBuffer, l:doc )
     " Remove any template parameter.
     if( s:CheckFileType() == "cpp" )
-        while( match( l:lineBuffer, l:templateParameterPattern ) != -1 )
-            let l:lineBuffer = substitute( l:lineBuffer, l:templateParameterPattern, "", "g" )
-        endwhile
-    elseif ( s:CheckFileType() == "go" )
         while( match( l:lineBuffer, l:templateParameterPattern ) != -1 )
             let l:lineBuffer = substitute( l:lineBuffer, l:templateParameterPattern, "", "g" )
         endwhile
@@ -951,6 +951,7 @@ endfunction
 " - Functions which return pointer to function are not supported.
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 function! s:ParseFunctionParameters( lineBuffer, doc )
+    let l:lineBuffer = a:lineBuffer
     "call s:WarnMsg( 'IN__'.a:lineBuffer )
     let l:paramPosition = matchend( a:lineBuffer, 'operator[[:blank:]]*([[:blank:]]*)' )
     if ( l:paramPosition == -1 )
@@ -983,14 +984,16 @@ function! s:ParseFunctionParameters( lineBuffer, doc )
             let l:functionBuffer = substitute( l:functionBuffer, '\<'.ignored.'\>', '', 'g' )
         endfor
         let l:functionReturnAndName = split( l:functionBuffer, '[[:blank:]*]' )
-        if( len( l:functionReturnAndName ) > 1 )
-            let a:doc.returns = 'yes'
-        endif
         let a:doc.name = l:functionReturnAndName[-1]
+
+        if (match(l:lineBuffer, ') \(.[^()]*\). {') != -1) 
+            let a:doc.returns = 'yes'
+            let l:lineBuffer = substitute(l:lineBuffer, ') \(.[^()]*\). {', ') {', '')
+        endif
     endif
 
     " Work on parameters.
-    let l:parametersBuffer = strpart( a:lineBuffer, l:paramPosition + 1 )
+    let l:parametersBuffer = strpart( l:lineBuffer, l:paramPosition + 1 )
     " Remove trailing closing bracket and everything that follows and trim.
     if( s:CheckFileType() == "cpp" )
         let l:parametersBuffer = substitute( l:parametersBuffer, ')[^)]*\%(;\|{\|\%([^:]:\%([^:]\|$\)\)\|\%(\<throw\>\)\).*', '', '' )
@@ -1042,8 +1045,6 @@ function! s:ParseFunctionParameters( lineBuffer, doc )
 
     if( s:CheckFileType() == "cpp" )
         call filter( l:params, 'v:val !~ "void"' )
-    elseif( s:CheckFileType() == "go" )
-        call filter( l:params, 'v:val !~ "void"' )
     else
         if( g:DoxygenToolkit_python_autoRemoveSelfParam == "yes" )
             call filter( l:params, 'v:val !~ "self"' )
@@ -1064,6 +1065,9 @@ endfunction
 function! s:ParseParameter( param )
     let l:paramName = "Unknown"
     let l:firstIndex = stridx( a:param, '(' )
+    if (s:CheckFileType() == "go") 
+        return a:param
+    endif
 
     if( l:firstIndex == -1 )
         let l:paramName =  split( a:param, '[[:blank:]*&]' )[-1]
